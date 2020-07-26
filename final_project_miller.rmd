@@ -1,0 +1,1287 @@
+---
+title: "final_project_miller"
+author: "smiller"
+date: "November 5, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r Relevant Packages}
+library(readxl)
+library(tidyr)
+library(dplyr)
+library(reshape2)
+
+library(ggplot2)
+library(ggthemes)
+
+library(stringr)
+library(caret)
+library(MLmetrics)
+library(skimr)
+library(DataExplorer)
+
+library(lmtest)
+library(MASS)
+```
+
+```{r Load F17 Grade Data}
+#As a convention, if X is a number, numX,is the number of students receiving a grade less than X and not previously categorized (ie exclusive categories). numX is the percentage of students in the course receiving a grade in this bucket. 
+
+#The buckets are [0], (0,1.9], [2,2.9], [3,3.5], [3.6,4].
+
+f17_grade_df <- read_excel("data/Fall_2017.xlsx", col_names = TRUE)
+
+names(f17_grade_df)<-c("coll", "div", "dept", "subject", "instructor", "crn", "num0", "pct0", "num1.9", "pct1.9", "num2.9", "pct2.9", "num3.5", "pct3.5", "num4", "pct4", "numI", "pctI", "numP", "pctP", "numR", "pctR", "numW", "pctW", "numS", "pctS", "numU", "pctU", "numZ", "pctZ", "total")
+
+f17_grade_df <- f17_grade_df[c(3:nrow(f17_grade_df)),]
+
+f17_agg_grade_df <- f17_grade_df %>% 
+  filter(is.na(coll)) %>%
+  dplyr::select(-c(coll,div, dept, instructor, crn)) %>%
+  mutate(sem = "f17")
+
+f17_grade_df <- f17_grade_df %>% 
+  filter(!is.na(coll)) %>% 
+  mutate(sem = "f17")
+```
+
+```{r Load W18 Grade Data}
+w18_grade_df <- read_excel("data/Winter_2018.xlsx", col_names = TRUE)
+
+names(w18_grade_df)<-c("coll", "div", "dept", "subject", "instructor", "crn", "num0", "pct0", "num1.9", "pct1.9", "num2.9", "pct2.9", "num3.5", "pct3.5", "num4", "pct4", "numI", "pctI", "numP", "pctP", "numR", "pctR", "numW", "pctW", "numS", "pctS", "numU", "pctU", "numZ", "pctZ", "total")
+
+w18_grade_df <- w18_grade_df[c(3:nrow(w18_grade_df)),]
+
+w18_agg_grade_df <- w18_grade_df %>% 
+  filter(is.na(coll)) %>%
+  dplyr::select(-c(coll,div, dept, instructor, crn)) %>%
+  mutate(sem = "w18")
+
+w18_grade_df <- w18_grade_df %>%
+  filter(!is.na(coll)) %>% 
+  mutate(sem = "w18")
+```
+
+Starting with the Fall 2018 semester, Oakland University changed the grading scale used from numeric grades, ranging from 0.0 to 4.0, to alphabetical grades, including A, A-, ..., F. Some of our analysis will focus on how the distribution of grades change in response to the change in grading system.
+
+```{r Load F18 Grade Data}
+#As a convention, if X is a letter grade, NumX,is the number of students receiving this grade and pctX is the percentage of students in the course receiving this grade.
+
+f18_grade_df <- read_excel("data/Fall_2018.xlsx", col_names = TRUE)
+
+names(f18_grade_df)<-c("coll", "div", "dept", "subject", "instructor", "crn", "numA", "pctA", "numAMinus", "pctAMinus", "numBPlus", "pctBPlus", "numB", "pctB", "numBMinus", "pctBMinus",  "numCPlus", "pctCPlus", "numC", "pctC", "numCMinus", "pctCMinus", "numDPlus", "pctDPlus", "numD", "pctD", "numF", "pctF", "numI", "pctI", "numP", "pctP", "numR", "pctR", "numS", "pctS", "numW", "pctW", "numU", "pctU", "numZ", "pctZ", "total")
+
+f18_grade_df <- f18_grade_df[c(3:nrow(f18_grade_df)),]
+
+f18_agg_grade_df <- f18_grade_df %>%  
+  filter(is.na(coll)) %>%
+  dplyr::select(-c(coll,div, dept, instructor, crn)) %>%
+  mutate(sem = "f18")
+
+f18_grade_df <- f18_grade_df %>%
+  filter(!is.na(coll)) %>% 
+  mutate(sem = "f18")
+```
+
+```{r Load W19 Grade Data}
+w19_grade_df <- read_excel("data/Winter_2019.xlsx", col_names = TRUE)
+
+names(w19_grade_df)<-c("coll", "div", "dept", "subject", "instructor", "crn", "numA", "pctA", "numAMinus", "pctAMinus", "numBPlus", "pctBPlus", "numB", "pctB", "numBMinus", "pctBMinus",  "numCPlus", "pctCPlus", "numC", "pctC", "numCMinus", "pctCMinus", "numDPlus", "pctDPlus", "numD", "pctD", "numF", "pctF", "numI", "pctI", "numP", "pctP", "numR", "pctR", "numS", "pctS", "numW", "pctW", "numU", "pctU", "numZ", "pctZ", "total")
+
+w19_grade_df <- w19_grade_df[c(3:nrow(w19_grade_df)),]
+
+# Our friends at the OIRA decided to include a Grand Total starting in Winter 2019
+# I did not realize this until I spent some more time with the data.
+w19_grade_df <- subset(w19_grade_df, subject != "Grand Total")
+
+w19_agg_grade_df <- w19_grade_df  %>%  
+  filter(is.na(coll)) %>%
+  dplyr::select(-c(coll,div, dept, instructor, crn)) %>%
+  mutate(sem = "w19")
+
+w19_grade_df <- w19_grade_df %>%
+  filter(!is.na(coll)) %>% 
+  mutate(sem = "w19")
+```
+```{r Combine Data Frames}
+num_grade_df <- rbind(f17_grade_df, w18_grade_df)
+num_agg_grade_df <- rbind(f17_agg_grade_df, w18_agg_grade_df)
+alpha_grade_df <- rbind(data = f18_grade_df, data = w19_grade_df)
+alpha_agg_grade_df <- rbind(data = f18_agg_grade_df, data =w19_agg_grade_df)
+
+# The 0s are left empty in the excel file the data is coming from
+num_grade_df[is.na(num_grade_df)] <- 0
+num_agg_grade_df[is.na(num_agg_grade_df)] <- 0
+alpha_grade_df[is.na(alpha_grade_df)] <- 0
+alpha_agg_grade_df[is.na(alpha_agg_grade_df)] <- 0
+
+rm(w19_grade_df, w19_agg_grade_df, f17_grade_df, f17_agg_grade_df)
+```
+
+The initial steps are motivated by things we learned in class: Using createReport to automate EDA, skimming the data to ensure we aren't missing things, looking at the structure, and computing basic summary statistics to gain initial insights. They are a good way to start an analysis of any data set.
+
+Let's start with the easiest EDA we know:
+```{r EDA 1}
+# create_report(num_grade_df)
+# create_report(num_agg_grade_df)
+# create_report(alpha_grade_df)
+# create_report(alpha_agg_grade_df)
+```
+
+Each report gives essentially the same message about the structure of datasets. Some of them have been commented out to make this compile faster. However, feel free to uncomment to take a deeper look.
+
+Now let's skim the data!
+
+```{r Skim}
+skim(num_grade_df)
+skim(num_agg_grade_df)
+skim(alpha_grade_df)
+skim(alpha_agg_grade_df)
+```
+
+It would probably be a good idea to look at the structure of the data frames we are working with.
+
+```{r Structure}
+str(num_grade_df)
+str(num_agg_grade_df)
+str(alpha_grade_df)
+str(alpha_agg_grade_df)
+```
+
+Yikes! We want numeric data for the number of students corresponding to a given group. We should fix this.
+
+```{r Percentage A and A- vs Percentage 3.6 - 4}
+num_grade_df[, 6:31] <- sapply(num_grade_df[, 6:31], as.numeric)
+
+num_agg_grade_df[, 2:26] <- sapply(num_agg_grade_df[, 2:26], as.numeric)
+
+alpha_agg_grade_df[, 2:38] <- sapply(alpha_agg_grade_df[, 2:38], as.numeric)
+
+alpha_grade_df[, 6:43] <- sapply(alpha_grade_df[, 6:43], as.numeric)
+
+
+# We'll need the following later...
+w18_agg_grade_df[, 2:27] <- sapply(w18_agg_grade_df[, 2:27],
+                                   as.numeric)
+
+w18_grade_df[, 6:32] <- sapply(w18_grade_df[, 6:32], as.numeric)
+
+f18_agg_grade_df[, 2:39] <- sapply(f18_agg_grade_df[, 2:39],
+                                   as.numeric)
+
+f18_grade_df[, 6:44] <- sapply(f18_grade_df[, 6:44], as.numeric)
+
+
+w18_agg_grade_df[is.na(w18_agg_grade_df)] <- 0
+w18_grade_df[is.na(w18_grade_df)] <- 0
+f18_agg_grade_df[is.na(f18_agg_grade_df)] <- 0
+f18_grade_df[is.na(f18_grade_df)] <- 0
+```
+
+That's better! The next logical step may be to look at a summary of the data.
+
+```{r Summary}
+summary(alpha_agg_grade_df)
+
+summary(num_agg_grade_df)
+```
+Looks good. Moving forward...
+
+Since an A corresponds to a 4.0 and an A- corresponds to a 3.7, it might be interesting to take a look at how the total number of A's and A-'s compares to the total number of grades on the interval [3.6,4.0].
+
+```{r Number A or A- vs Number 3.6 - 4}
+alpha_vec <- alpha_agg_grade_df %>%
+  mutate(good_grade = numA + numAMinus) %>% 
+  dplyr::select(good_grade, total, sem)
+
+num_vec <- num_agg_grade_df %>% 
+  mutate(good_grade = num4) %>% 
+  dplyr::select(good_grade, total, sem)
+
+small_df <- rbind(alpha_vec, num_vec)
+positions <- c("f17", "w18", "f18", "w19")
+
+ggplot(small_df) + geom_bar(aes(x = sem, y = good_grade), stat = "identity") +
+  xlab("Semester") +
+  ylab("Number of Good Grades") +
+  ggtitle("Number of Good Grades by Semester") +
+  scale_x_discrete(labels = c("Fall '17", "Winter '18", "Fall '18", "Winter '19"),
+                   limits = positions) +
+  theme_economist()
+```
+
+While the number of good grades in each semester are similar, there are definitely better ways to view the issue. Could it be that more students enrolled, but grading became more strict? It might be more beneficial to view the percentage of students that earned good grades. This technique was adopted from a homework assignment.
+
+```{r Percentage A or A- vs Percentage 3.6 - 4}
+small_df <- small_df %>% 
+  group_by(sem) %>% 
+  mutate(pct_good = sum(good_grade)/(n()*sum(total)))
+
+positions <- c("f17", "w18", "f18", "w19")
+
+ggplot(small_df) + geom_bar(aes(x = sem, y = pct_good), stat = "identity") +
+  xlab("Semester") +
+  ylab("Percentage Receiving Good Grades") +
+  ggtitle("Percentage Receiving Good Grades by Semester") +
+  scale_x_discrete(labels = c("Fall '17", "Winter '18", "Fall '18", "Winter '19"),
+                   limits = positions) +
+  theme_economist()
+
+rm(small_df)
+```
+
+After a closer look, it appears that it did not become significantly easier to earn a good grade at Oakland after the grade change. Rather, more students enrolled or a similar number of students took more classes in Winter '19, so there was an increase in the total number of good grades.
+
+Lets repeat the analysis with the number of students receiving bad grades...
+
+```{r Percentage F through C- vs Percentage 0 - 1.9}
+alpha_vec <- alpha_agg_grade_df %>%
+  mutate(bad_grade = numF + numD + numDPlus + numCMinus) %>% 
+  dplyr::select(bad_grade, total, sem)
+
+num_vec <- num_agg_grade_df %>% 
+  mutate(bad_grade = num0 + num1.9) %>% 
+  dplyr::select(bad_grade, total, sem)
+
+small_df <- rbind(alpha_vec, num_vec) %>%
+  group_by(sem) %>% 
+  mutate(pct_bad = sum(bad_grade)/(n()*sum(total)))
+
+ggplot(small_df) + geom_bar(aes(x = sem, y = pct_bad), stat = "identity") +
+  xlab("Semester") +
+  ylab("Percentageage Receiving Bad Grades") +
+  ggtitle("Percentage Receiving Bad Grades by Semester") +
+  scale_x_discrete(labels = c("Fall '17", "Winter '18", "Fall '18", "Winter '19"),
+                   limits = positions) +
+  theme_economist()
+
+```
+
+It might be helpful to view the bars from further out, on the same scale as the good grade plot.
+
+```{r Zoom Out}
+ggplot(small_df) + geom_bar(aes(x = sem, y = pct_bad), stat = "identity") +
+  xlab("Semester") +
+  ylab("Percentage Receiving Bad Grades") +
+  ggtitle("Percentage Receiving Bad Grades by Semester") +
+  scale_x_discrete(labels = c("Fall '17", "Winter '18", "Fall '18", 
+                              "Winter '19"),limits = positions) +
+  ylim(0,.5) +
+  theme_economist()
+
+rm(small_df, num_vec, alpha_vec)
+```
+ 
+It might be interesting to get a less aggregated view. What if we looked at the distribution of good and bad grades among each section of each class?
+
+```{r Section-Level Distribution}
+alpha_vec <- alpha_grade_df %>%
+  mutate(pct_good = pctA + pctAMinus,
+         pct_avg1 = pctBPlus + pctB, 
+         pct_avg2 = pctBMinus + pctCPlus + pctC, 
+         pct_bad = pctCMinus + pctDPlus + pctD + pctF) %>% 
+  dplyr::select(subject, pct_good, pct_avg1, pct_avg2, pct_bad, sem)
+
+num_vec <- num_grade_df %>% 
+  mutate(pct_good = pct4, 
+         pct_avg1 = pct3.5, 
+         pct_avg2 = pct2.9, 
+         pct_bad = pct1.9 + pct0) %>% 
+  dplyr::select(subject, pct_good, pct_avg1, pct_avg2, pct_bad, sem)
+
+small_df <- rbind(alpha_vec, num_vec)
+
+ggplot(small_df) + geom_violin(aes(x = sem, y = pct_good)) +
+  scale_x_discrete(labels = c("Fall '17", "Winter '18", "Fall '18", "Winter '19"),
+                   limits = positions) +
+  xlab("Semester") +
+  ylab("Distribution of Good Grades") +
+  ggtitle("Distribution of Good Grades by Semester") +
+  theme_economist()
+
+ggplot(small_df) + geom_violin(aes(x = sem, y = pct_avg1)) +
+  scale_x_discrete(labels = c("Fall '17", "Winter '18", "Fall '18", "Winter '19"),
+                   limits = positions) +
+  xlab("Semester") +
+  ylab("Distribution of High-Average Grades") +
+  ggtitle("Distribution of High-Average Grades by Semester") +
+  theme_economist()
+
+ggplot(small_df) + geom_violin(aes(x = sem, y = pct_avg2)) +
+  scale_x_discrete(labels = c("Fall '17", "Winter '18", "Fall '18", "Winter '19"),
+                   limits = positions) +
+  xlab("Semester") +
+  ylab("Distribution of Low-Average Grades") +
+  ggtitle("Distribution of Low-Average Grades by Semester") +
+  theme_economist()
+
+ggplot(small_df) + geom_violin(aes(x = sem, y = pct_bad)) +
+  scale_x_discrete(labels = c("Fall '17", "Winter '18", "Fall '18", "Winter '19"),
+                   limits = positions) +
+  xlab("Semester") +
+  ylab("Distribution of Bad Grades") +
+  ggtitle("Distribution of Bad Grades by Semester") +
+  theme_economist()
+```
+
+The distribution of grades among each course does not appear to have changed significantly after the transition to a new grading scale. Could it be that students just like to complain? Most of the complaints I hear are from Biology students, so lets view these same plot, but only for courses offered by the Department of Biological Sciences (BIO courses).
+
+```{r BIO Distributions}
+alpha_vec <- alpha_grade_df %>%
+  filter(dept == "BIO") %>% 
+  mutate(pct_good = pctA + pctAMinus,
+         pct_avg1 = pctBPlus + pctB, 
+         pct_avg2 = pctBMinus + pctCPlus + pctC, 
+         pct_bad = pctCMinus + pctDPlus + pctD + pctF) %>% 
+  dplyr::select(subject, pct_good, pct_avg1, pct_avg2, pct_bad, sem)
+
+num_vec <- num_grade_df %>%
+  filter(dept == "BIO") %>% 
+  mutate(pct_good = pct4, 
+         pct_avg1 = pct3.5, 
+         pct_avg2 = pct2.9, 
+         pct_bad = pct1.9 + pct0) %>% 
+  dplyr::select(subject, pct_good, pct_avg1, pct_avg2, pct_bad, sem)
+
+small_df <- rbind(alpha_vec, num_vec)
+
+ggplot(small_df) + geom_violin(aes(x = sem, y = pct_good)) +
+  scale_x_discrete(labels = c("Fall '17", "Winter '18", "Fall '18", "Winter '19"),
+                   limits = positions) +
+  xlab("Semester") +
+  ylab("Distribution of Good Grades") +
+  ggtitle("BIO Distribution of Good Grades by Semester") +
+  theme_economist()
+
+ggplot(small_df) + geom_violin(aes(x = sem, y = pct_avg1)) +
+  scale_x_discrete(labels = c("Fall '17", "Winter '18", "Fall '18", "Winter '19"),
+                   limits = positions) +
+  xlab("Semester") +
+  ylab("Distribution of High-Average Grades") +
+  ggtitle("BIO Distribution of High-Average Grades by Semester") +
+  theme_economist()
+
+ggplot(small_df) + geom_violin(aes(x = sem, y = pct_avg2)) +
+  scale_x_discrete(labels = c("Fall '17", "Winter '18", "Fall '18", "Winter '19"),
+                   limits = positions) +
+  xlab("Semester") +
+  ylab("Distribution of Low-Average Grades") +
+  ggtitle("BIO Distribution of Low-Average Grades by Semester") +
+  theme_economist()
+
+ggplot(small_df) + geom_violin(aes(x = sem, y = pct_bad)) +
+  scale_x_discrete(labels = c("Fall '17", "Winter '18", "Fall '18",
+                              "Winter '19"),
+                   limits = positions) +
+  xlab("Semester") +
+  ylab("Distribution of Bad Grades") +
+  ggtitle("BIO Distribution of Bad Grades by Semester") +
+  theme_economist()
+
+rm(positions)
+```
+It really does seem as if students enjoy complaining. Statistics is especially fun when the data is rampant with variation. Unfortunately, it seems like not much has changed with the grading distribution after the new scale was implemented.
+
+I also want to seize this opportunity to look at which departments award the most "good grades."
+
+```{r The Easiest Departments}
+alpha_vec <- alpha_agg_grade_df %>%
+  mutate(num_good = numA + numAMinus,
+         num_avg1 = numBPlus + numB, 
+         num_avg2 = numBMinus + numCPlus + numC, 
+         num_bad = numCMinus + numDPlus + numD + numF) %>%
+  dplyr::select(subject, num_good, num_avg1, num_avg2, num_bad, sem, subject, total)
+
+num_vec <- num_agg_grade_df %>% 
+  mutate(num_good = num4, 
+         num_avg1 = num3.5, 
+         num_avg2 = num2.9, 
+         num_bad = num1.9 + num0) %>% 
+  dplyr::select(subject, num_good, num_avg1, num_avg2, num_bad, sem, subject, total)
+
+small_df <- rbind(alpha_vec, num_vec)
+
+small_df$dept <- as.factor(substr(small_df$subject,1,3))
+
+small_df <- small_df %>%
+  group_by(dept) %>%
+  summarize(avg_good = mean(num_good),
+            avg_tot = mean(total)) %>% 
+  mutate(pct_good = avg_good / avg_tot) %>% 
+  arrange(desc(pct_good)) %>% 
+  slice(1:10)
+
+ggplot(small_df) + 
+  geom_bar(aes(x = reorder(dept, pct_good), y = pct_good),stat = "identity") +
+  coord_flip() +
+  ggtitle("Top 10 Easiest Departments") +
+  ylab("% Good Grades") +
+  xlab("Department") +
+  theme_economist()
+```
+
+It appears that the arts dominate in regards to giving the most good grades.
+
+I wonder which departments give the lowest percentage of good grades.
+ 
+```{r Hardest Departments}
+small_df <- rbind(alpha_vec, num_vec)
+
+small_df$dept <- as.factor(substr(small_df$subject,1,3))
+
+small_df <- small_df %>%
+  group_by(dept) %>%
+  summarize(avg_good = mean(num_good),
+            avg_tot = mean(total)) %>% 
+  mutate(pct_good = avg_good / avg_tot) %>% 
+  arrange(pct_good) %>% 
+  slice(1:10)
+
+ggplot(small_df) + 
+  geom_bar(aes(x = reorder(dept, pct_good), y = pct_good),stat = "identity") +
+  coord_flip() +
+  ggtitle("Top 10 Hardest Departments") +
+  ylab("% Good Grades") +
+  xlab("Department") +
+  theme_economist()
+
+```
+
+Unfortunately, it looks like my home department of mathematics dominates. MTH, STA, and APM are all represented. The Business School is also represented with ECN, QMM, and POM.
+
+Oh no! Someone with different goals has a different set of criteria for what makes a department "easy." This person is simply looking to not get a bad grade. I wonder if the results will vary.
+
+```{r Easiest 2}
+small_df <- rbind(alpha_vec, num_vec)
+
+small_df$dept <- as.factor(substr(small_df$subject,1,3))
+
+small_df <- small_df %>%
+  group_by(dept) %>%
+  summarize(avg_bad = mean(num_bad),
+            avg_tot = mean(total)) %>% 
+  mutate(pct_bad = avg_bad / avg_tot) %>% 
+  arrange(pct_bad) %>% 
+  slice(1:10)
+
+ggplot(small_df) + 
+  geom_bar(aes(x = reorder(dept, pct_bad), y = pct_bad),stat = "identity") +
+  coord_flip() +
+  ggtitle("Top 10 Easiest Departments") +
+  ylab("% Bad Grades") +
+  xlab("Department") +
+  theme_economist()
+```
+
+Well, I found out which classes to take if you are simply looking to get a degree! On the other hand, the students may all be workaholics. Without more data, likley at a much lower level, I'll never know.
+
+```{r Hardest 2}
+small_df <- rbind(alpha_vec, num_vec)
+
+small_df$dept <- as.factor(substr(small_df$subject,1,3))
+
+small_df <- small_df %>%
+  group_by(dept) %>%
+  summarize(avg_bad = mean(num_bad),
+            avg_tot = mean(total)) %>% 
+  mutate(pct_bad = avg_bad / avg_tot) %>% 
+  arrange(desc(pct_bad)) %>% 
+  slice(1:10)
+
+ggplot(small_df) + 
+  geom_bar(aes(x = reorder(dept, pct_bad), y = pct_bad),stat = "identity") +
+  coord_flip() +
+  ggtitle("Top 10 Hardest Departments") +
+  ylab("% Bad Grades") +
+  xlab("Department") +
+  theme_economist()
+
+rm(num_vec, alpha_vec, small_df)
+```
+Not much changed. It seems that the departments which are difficult to succeed in are generally easy to do poorly in, and vice versa.
+
+It might be interesting and helpful for any potential analyses to create a feature that will tell us if the course is categorized as undergraduate or graduate level. To do this, we need to introduce a binary variable.
+
+```{r Add Undergrad vs Grad Binary Feature}
+# The OIRA adds "Total" to the output in the column of interest at the aggregate level
+
+# The business school started offering Honors Sections of some courses, which makes things a little more interesting
+alpha_agg_grade_df$courseNumber <- ifelse(
+  is.numeric(as.numeric(str_sub(alpha_agg_grade_df$subject,-10,-7))),
+  as.numeric(str_sub(alpha_agg_grade_df$subject,-10,-7)),
+  as.numeric(str_sub(alpha_agg_grade_df$subject,-11,-8)))
+
+num_agg_grade_df$courseNumber <- 
+  as.numeric(str_sub(num_agg_grade_df$subject,-10,-7))
+
+# There are no quirks here
+alpha_grade_df$courseNumber <- ifelse(
+  is.numeric(as.numeric(str_sub(alpha_grade_df$subject,-4))),
+  as.numeric(str_sub(alpha_grade_df$subject,-4)),
+  as.numeric(str_sub(alpha_grade_df$subject,-5,-1)))
+
+num_grade_df$courseNumber <- 
+  as.numeric(str_sub(num_grade_df$subject,-4))
+```
+
+Now that we extracted a course code, we can add a binary, grad, which is 1 if the course is a graduate course and 0 otherwise. We define a graduate course as one with a course number greater than or equal to 5000.
+
+```{r Binary Contd}
+alpha_agg_grade_df$grad <- ifelse(
+  alpha_agg_grade_df$courseNumber >= 5000,
+  1,
+  0)
+
+alpha_grade_df$grad <- ifelse(
+  alpha_grade_df$courseNumber >= 5000,
+  1,
+  0)
+
+num_agg_grade_df$grad <- ifelse(
+  num_agg_grade_df$courseNumber >= 5000,
+  1,
+  0)
+
+num_grade_df$grad <- ifelse(
+  num_grade_df$courseNumber >= 5000,
+  1,
+  0)
+```
+
+As someone who enjoys learning, I often consider going to graduate school. It would be good to know if I should expect fewer good grades if I decide to go.
+
+```{r Is a good grade feasible}
+alpha_vec <- alpha_agg_grade_df %>%
+  mutate(num_good = numA + numAMinus,
+         num_avg1 = numBPlus + numB, 
+         num_avg2 = numBMinus + numCPlus + numC, 
+         num_bad = numCMinus + numDPlus + numD + numF) %>%
+  dplyr::select(subject, num_good, num_avg1, num_avg2, num_bad, sem, subject, 
+                total, grad)
+
+num_vec <- num_agg_grade_df %>% 
+  mutate(num_good = num4, 
+         num_avg1 = num3.5, 
+         num_avg2 = num2.9, 
+         num_bad = num1.9 + num0) %>% 
+  dplyr::select(subject, num_good, num_avg1, num_avg2, num_bad, sem, subject, 
+                total, grad)
+
+small_df <- rbind(alpha_vec, num_vec)
+
+small_df <- small_df %>%
+  group_by(grad) %>%
+  summarize(avg_good = mean(num_good),
+            avg_tot = mean(total)) %>% 
+  mutate(pct_good = avg_good / avg_tot) %>% 
+  arrange(desc(pct_good)) %>% 
+  slice(1:10)
+
+ggplot(small_df) + 
+  geom_bar(aes(x = grad, y = pct_good),stat = "identity") +
+  ggtitle("Grad School vs UG") +
+  ylab("% Good Grades") +
+  xlab("Level of Education") +
+  scale_x_discrete(labels = c("Graduate", "Undergraduate"),
+                   limits = c(1,0)) +
+  theme_economist()
+```
+
+Wow, there is a distinct difference between the percentage of good grades awarded at the undergraduate and graduate level of education. Can you do poorly in grad school if you try?
+
+```{r Can I fail in grad school}
+small_df <- rbind(alpha_vec, num_vec)
+
+small_df <- small_df %>%
+  group_by(grad) %>%
+  summarize(avg_bad = mean(num_bad),
+            avg_tot = mean(total)) %>% 
+  mutate(pct_bad = avg_bad / avg_tot) %>% 
+  arrange(desc(pct_bad)) %>% 
+  slice(1:10)
+
+ggplot(small_df) + 
+  geom_bar(aes(x = grad, y = pct_bad),stat = "identity") +
+  ggtitle("Grad School vs UG") +
+  ylab("% Bad Grades") +
+  xlab("Level of Education") +
+  scale_x_discrete(labels = c("Graduate", "Undergraduate"),
+                   limits = c(1,0)) +
+  theme_economist()
+```
+
+Short answer: Barely.
+
+```{r Grades by the 1000s Prep}
+alpha_agg_grade_df$level <- substr(alpha_agg_grade_df$courseNumber,1,1)
+
+alpha_grade_df$level <- substr(alpha_grade_df$courseNumber,1,1)
+
+num_agg_grade_df$level <- substr(num_agg_grade_df$courseNumber,1,1)
+
+num_grade_df$level <- substr(num_grade_df$courseNumber,1,1)
+```
+
+```{r}
+alpha_vec <- alpha_agg_grade_df %>%
+  mutate(num_good = numA + numAMinus,
+         num_avg1 = numBPlus + numB, 
+         num_avg2 = numBMinus + numCPlus + numC, 
+         num_bad = numCMinus + numDPlus + numD + numF) %>%
+  dplyr::select(subject, num_good, num_avg1, num_avg2, num_bad, sem, subject, 
+                total, level)
+
+num_vec <- num_agg_grade_df %>% 
+  mutate(num_good = num4, 
+         num_avg1 = num3.5, 
+         num_avg2 = num2.9, 
+         num_bad = num1.9 + num0) %>% 
+  dplyr::select(subject, num_good, num_avg1, num_avg2, num_bad, sem, subject, 
+                total, level)
+
+small_df <- rbind(alpha_vec, num_vec)
+
+small_df <- small_df %>%
+  group_by(level) %>%
+  summarize(avg_good = mean(num_good),
+            avg_tot = mean(total)) %>% 
+  mutate(pct_good = avg_good / avg_tot)
+
+ggplot(small_df) + 
+  geom_bar(aes(x = level, y = pct_good),stat = "identity") +
+  ggtitle("Good Grades by Level") +
+  ylab("% Good Grades") +
+  xlab("Course Level") +
+  scale_x_discrete(labels = seq(1000,9000,1000)) +
+  theme_economist()
+
+small_df <- rbind(alpha_vec, num_vec)
+
+small_df <- small_df %>%
+  group_by(level) %>%
+  summarize(avg_bad = mean(num_bad),
+            avg_tot = mean(total)) %>% 
+  mutate(pct_bad = avg_bad / avg_tot)
+
+ggplot(small_df) + 
+  geom_bar(aes(x = level, y = pct_bad),stat = "identity") +
+  ggtitle("Bad Grades by Level") +
+  ylab("% Bad Grades") +
+  xlab("Course Level") +
+  scale_x_discrete(labels = seq(1000,9000,1000)) +
+  theme_economist()
+```
+
+It seems as if as Course Level increases, the percemnatge of good grades increases and the percenatge of bad grades falls. 
+
+Grade Distribution EDA has been a lot of fun, but we should try to predict enrollment. If we add a binary variable that takes a value of 1 if the grading system is alphabetical, we can determine if the change in grading scale had a statisitcally significant impact on enrollment by department. It will also be itneresting to see if the grade distributions impact enrollment. These variable should be lagged a semester to allow for students to respond to changes if any occurred.
+
+```{r Setting up for predictive modeling}
+f18_enroll_df <- read_excel("data/Fall_2018_Enrollment.xlsx", col_names = TRUE)
+f18_enroll_df <- f18_enroll_df %>% 
+  filter(str_detect(Dept., "Total")) %>% 
+  dplyr::select(Dept., Enrolled) %>% 
+  mutate(prev_alpha_grade = 0) %>% 
+  arrange(Dept.)
+
+names(f18_enroll_df) <- c("dept", "enrollment", "prev_alpha_grade")
+
+f18_enroll_df$dept <- as.factor(substr(f18_enroll_df$dept,1,3))
+
+w19_enroll_df <- read_excel("data/Winter_2019_Enrollment.xlsx", col_names = TRUE)
+w19_enroll_df <- w19_enroll_df %>% 
+  filter(str_detect(Dept., "Total")) %>% 
+  dplyr::select(Dept., Enrolled) %>% 
+  mutate(prev_alpha_grade = 1) %>% 
+  arrange(Dept.)
+
+names(w19_enroll_df) <- c("dept", "enrollment","prev_alpha_grade")
+w19_enroll_df$dept <- as.factor(substr(w19_enroll_df$dept,1,3))
+```
+
+
+```{r Check enroll dfs}
+head(f18_enroll_df)
+head(w19_enroll_df)
+```
+
+Oh no! ACC courses are under the divisions A&F and ACC. Because we are only looking at the relationships between department and enrollment, we can lump these obsevrations together.
+
+```{r }
+f18_enroll_df[2,2] <- f18_enroll_df[2,2] + f18_enroll_df[1,2] 
+f18_enroll_df <- f18_enroll_df[-c(1),]
+
+w19_enroll_df[2,2] <- w19_enroll_df[2,2] + w19_enroll_df[1,2]
+w19_enroll_df <- w19_enroll_df[-c(1),]
+```
+
+```{r Format previous semester grade data}
+w18_gen <- w18_agg_grade_df %>% 
+  mutate(num_good = num4, 
+         num_avg1 = num3.5, 
+         num_avg2 = num2.9, 
+         num_bad = num1.9 + num0) %>% 
+  dplyr::select(subject, num_good, num_avg1, num_avg2, num_bad, sem, subject,
+         total)
+
+w18_gen$dept <- as.factor(substr(w18_gen$subject,1,3))
+
+f18_gen <- f18_agg_grade_df %>% 
+  mutate(num_good = numA + numAMinus,
+         num_avg1 = numBPlus + numB, 
+         num_avg2 = numBMinus + numCPlus + numC, 
+         num_bad = numCMinus + numDPlus + numD + numF) %>% 
+  dplyr::select(subject, num_good, num_avg1, num_avg2, num_bad, sem, subject,
+         total)
+
+f18_gen$dept <- as.factor(substr(f18_gen$subject,1,3))
+```
+
+```{r Compute percent grade stats by dept }
+w18_gen <- w18_gen %>%
+  group_by(dept) %>%
+  summarize(avg_good = mean(num_good),
+            avg_avg1 = mean(num_avg1),
+            avg_avg2 = mean(num_avg2),
+            avg_bad = mean(num_bad),
+            avg_tot = mean(total),
+            ct = n()) %>% 
+  mutate(pct_good = avg_good / avg_tot,
+         pct_avg1 = avg_avg1 / avg_tot,
+         pct_avg2 = avg_avg2 / avg_tot,
+         pct_bad = avg_bad / avg_tot)
+
+f18_gen <- f18_gen %>%
+  group_by(dept) %>%
+  summarize(avg_good = mean(num_good),
+            avg_avg1 = mean(num_avg1),
+            avg_avg2 = mean(num_avg2),
+            avg_bad = mean(num_bad),
+            avg_tot = mean(total),
+            ct = n()) %>% 
+  mutate(pct_good = avg_good / avg_tot,
+         pct_avg1 = avg_avg1 / avg_tot,
+         pct_avg2 = avg_avg2 / avg_tot,
+         pct_bad = avg_bad / avg_tot)
+```
+
+```{r}
+enroll_prev_grade_df_1 <- inner_join(f18_enroll_df, w18_gen)
+enroll_prev_grade_df_2 <- inner_join(w19_enroll_df, f18_gen)
+
+enroll_df <- rbind(enroll_prev_grade_df_1, 
+                              enroll_prev_grade_df_2)
+
+rm(enroll_prev_grade_df_1, enroll_prev_grade_df_2, f18_enroll_df, 
+   w18_gen, w19_enroll_df, f18_gen, f18_agg_grade_df, f18_grade_df, 
+   w18_agg_grade_df, w18_grade_df)
+
+enroll_df$dept <- as.factor(enroll_df$dept)
+
+str(enroll_df)
+```
+
+It looks like we're all set up to do some modeling, with a solid df in hand.
+
+```{r Subset data}
+set.seed(999)
+trainIndex <- createDataPartition(enroll_df$enrollment, p = .8,
+                                  list = FALSE,
+                                  times = 1)
+
+enroll.train <- enroll_df[trainIndex,]
+enroll.test <- enroll_df[-trainIndex,]  
+```
+
+The first step should be to make a null model to see if we can beat the most simple solution. We learned to this in the course. We are also using the RMSE to select the best model, another technique picked up from the course.
+
+```{r Null Model}
+null_pred <- mean(enroll.train$enrollment)
+null_pred
+
+null_rmse <- RMSE(enroll.train$enrollment, null_pred)
+null_rmse
+```
+
+```{r Training Model 1}
+# Lets see how the model using percentage grade data
+
+enroll_lm_1 <- lm(enrollment ~ pct_good + pct_avg1 + pct_avg2 +
+                    pct_bad, data = enroll.train)
+summary(enroll_lm_1)
+
+enroll_predict_train_1 <- predict(enroll_lm_1, newdata = enroll.train)
+
+enroll_lm_rmse_1 <- RMSE(enroll.train$enrollment, 
+                         enroll_predict_train_1)
+enroll_lm_rmse_1
+```
+
+It appears that, alone, the percentage grade data can explain about 20% of the variation observed in enrollment. Some of the coefficient estimates are individiually significant, but others do not appear to be. The variables appear to be jointly signficant, which is a good sign.
+
+Because its available, let's add a lagged dependent variable to see how that impacts the result. I suspect it will be very explanatory.
+
+```{r Training Model 2}
+enroll_lm_2 <- lm(enrollment ~ pct_good + pct_avg1 + pct_avg2 + 
+                    pct_bad + ct:avg_tot,
+                  data = enroll.train)
+summary(enroll_lm_2)
+
+enroll_predict_train_2 <- predict(enroll_lm_2, newdata = enroll.train)
+
+enroll_lm_rmse_2 <- RMSE(enroll.train$enrollment, 
+                         enroll_predict_train_2)
+enroll_lm_rmse_2
+```
+
+The lagged dependent variable, ct:avg_tot, is simply the enrollment in the department in the previous semester. Based on the p value, it is definitely significant. Its interesting that the inclusion of this variable negatively impacted the coefficient estimates for some of the other variables.
+
+It probably makes sense to keep the lagged dependent variable in all future models due to its explanatory power. Finally, lets add the prev_alpha_grade variable to see if the grade change impacted enrollment in any meaningful way. Based on the EDA, this is unlikely, but we can conduct some hypothesis testing. Let's assume an alpha level of 0.10.
+
+$H_0$: The coefficient on prev_alpha_grade$=0$
+$H_1$: The coefficient on prev_alpha_grade $\neq 0$
+
+
+```{r Training Model 3}
+enroll_lm_3 <- lm(enrollment ~ pct_good + pct_avg1 + pct_avg2 + 
+                    pct_bad + prev_alpha_grade + ct:avg_tot,
+                  data = enroll.train)
+summary(enroll_lm_3)
+
+summary(enroll_lm_3)$r.squared
+
+enroll_predict_train_3 <- predict(enroll_lm_3, newdata = enroll.train)
+
+enroll_lm_rmse_3 <- RMSE(enroll.train$enrollment, 
+                         enroll_predict_train_3)
+enroll_lm_rmse_3
+```
+The p-value associated with prev_alpha_grade's coefficient is 0.229. Since this is larger than 0.10, we fail to reject the null hypothesis. There is not evidence that the grading style change impacted enrollment.
+
+
+Let's discuss the RMSE of each model, as we will be using it as the selection criterion for out final model. The null RMSE was approximately 820. By constructing a model using only percentage distribution of grades, we were able to reduce the RMSE to about 735. This is better, though not great. After introducing the lagged dependent variable, the model RMSE was reduced even further to about 307. This is significantly better and makes it the best model. When introducing the prev_alpha_grade variable, RMSE was reduced further. Additionally adjusted R-squared increased, but the F-statistic decreased. We would probably use Model 3 for the testign date due to the reduced RMSE. In this analysis, we'll test on both Model 2 and Model 3 to see if a marginally better RMSE is correlated with better predictive performance on our testing data.
+
+It's also interesting to look at the $R^2$ of each model to gain an intuitive sense of how much we are explaining. The null model is significantly worse than Models 2 and 3, which are quite close to each other.
+
+Before we decide to test on either of these models, we can also perform a test to see if the functional form has been specified correctly. This is the Ramsey RESET test. It will let us know if variables should be logged, in the function as quadratics, or int
+
+```{r Testing Model 2}
+enroll_predict_test_2 <- predict(enroll_lm_2, newdata = enroll.test)
+enroll_lm_rmse_test_2 <- RMSE(enroll.test$enrollment,
+                              enroll_predict_test_2)
+enroll_lm_rmse_test_2
+```
+
+```{r Testing Model 3}
+enroll_predict_test_3 <- predict(enroll_lm_3, newdata = enroll.test)
+enroll_lm_rmse_test_3 <- RMSE(enroll.test$enrollment,
+                              enroll_predict_test_3)
+enroll_lm_rmse_test_3
+```
+
+Model 2 had an RMSE of about 361 on the testing data, while Model 3 had an RMSE of about 351. So the slight difference on the training data translated to a larger difference on the testing data.
+
+```{r Plotting Predictions}
+small_df_2 <- data.frame(t(rbind(enroll.test$enrollment,
+                               enroll_predict_test_2)))
+small_df_3 <- data.frame(t(rbind(enroll.test$enrollment,
+                               enroll_predict_test_3)))
+
+names(small_df_2) <- c("act", "pred")
+names(small_df_3) <- c("act", "pred")
+
+ggplot(small_df_2) + geom_point(aes(x = act, y = pred)) +
+  geom_smooth(aes(x = act, y = pred), 
+              method = "lm", color = "black") +
+  ggtitle("Actual vs Predicted Model 2") +
+  xlab("Actual Enrollment") + 
+  ylab("Predicted Enrollment") +
+  theme_economist()
+
+ggplot(small_df_3) + geom_point(aes(x = act, y = pred)) +
+  geom_smooth(aes(x = act, y = pred), 
+              method = "lm", color = "black") +
+  ggtitle("Actual vs Predicted Model 3") +
+  xlab("Actual Enrollment") + 
+  ylab("Predicted Enrollment") +
+  theme_economist()
+```
+
+Its interesting to observe that the model produces some negative predictions and that as the actual enrollment grows, the magnitude of the prediction error increases. 
+
+For now, we'll focus on the third model. Let's look at a different plot:
+
+```{r Plot Residuals}
+small_df <- data.frame(cbind(enroll.train$ct, enroll.train$avg_tot,
+                  enroll_lm_3$residuals))
+names(small_df) <- c("ct", "avg_tot", "res")
+small_df <- small_df  %>% mutate(prev_enroll = ct * avg_tot)
+
+ggplot(small_df) + geom_point(aes(x = prev_enroll, y = res)) +
+  ggtitle("Previous Enrollment vs Residual") +
+  xlab("Previous Enrollment") + 
+  ylab("Residual") +
+  theme_economist()
+```
+
+This could be grounds for heteroskedasticity. We better utilize a Breusch-Pagan test. Let's assume an alpha level of 0.01.
+
+$H_0:$ Homoskedasticity
+$H_1:$ Heteroskedasticity
+
+```{r Breusch-Pagan 1}
+bptest(enroll_lm_3)
+```
+
+Since 2.535e-06 < 0.05, we reject $H_0$. We need to somehow correct for the heteroskedasticity. One way to attempt this is to use robust regression: 
+
+```{r Robust Fit}
+enroll_lm_4 <- rlm(enrollment ~ pct_good + pct_avg1 + pct_avg2 + 
+                    pct_bad + prev_alpha_grade + ct:avg_tot,
+                  data = enroll.train)
+summary(enroll_lm_4)
+
+enroll_predict_train_4 <- predict(enroll_lm_4, newdata = enroll.train)
+
+enroll_lm_rmse_4 <- RMSE(enroll.train$enrollment, 
+                         enroll_predict_train_4)
+enroll_lm_rmse_4
+
+#Critical t-value for the model
+qt(.975, 141)
+```
+Wow! Robust regression reduced the standard error and RMSE quite a bit. This reduction in standard errors has additionally made the coefficient estimate for prev_alpha_grade statistically significant! It seems as if the transition to alphabetical grades may have hurt later enrollment. It would be better to have data that spans many years before and many years after to be more sure of this, so I am hesitant to make any definite claims.
+
+Let's plot the residuals of this new model to be sure we have corrected for heteroskedasticity:
+
+
+```{r Residuals 2}
+small_df <- data.frame(cbind(enroll.train$ct, enroll.train$avg_tot,
+                  enroll_lm_3$residuals))
+names(small_df) <- c("ct", "avg_tot", "res")
+small_df <- small_df  %>% mutate(prev_enroll = ct * avg_tot)
+
+small_df$res <-  enroll_lm_4$residuals
+
+ggplot(small_df) + geom_point(aes(x = prev_enroll, y = res)) +
+  ggtitle("Previous Enrollment vs Residual") +
+  xlab("Previous Enrollment") + 
+  ylab("Residual") +
+  theme_economist()
+```
+
+This looks a little better. I wonder if the new model will pass the Breusch-Pagan test:
+We can again assume an alpha level of 0.01.
+
+$H_0:$ Homoskedasticity
+$H_1:$ Heteroskedasticity
+
+```{r Breusch-Pagan 2}
+bptest(enroll_lm_4)
+```
+It seems as if the robust estimation did not completely resolve our issue. Based on the data, this is a difficult issue to resolve.
+
+Another workaround that I read may resolve the issue, and which I am broadly interested in, is using bootstrap aggregation. We saw its use in the context of decision trees, but never for linear regression. I read that simple form of bagging for linear regression could be simply developing many models on subsets of the data, then taking the simple average of their results for a final model. It is similar to cross validation, but not quite the same. The general idea is further explained here: https://www.youtube.com/watch?v=2Mg8QD0F1dQ
+ 
+I couldn't find any functions to do exactly what I wanted, so I decided to alter existing code to make my own. Helpful links in developing this were:
+
+- Concepts
+    - https://www.youtube.com/watch?v=ydtOTctg5So
+    - https://www.youtube.com/watch?v=KIOeZ5cFZ50
+
+- Code
+    - https://stats.stackexchange.com/questions/316483/manually-bootstrapping-linear-regression-in-r
+    - https://www.youtube.com/watch?v=TP6r5CTd9yM
+    - http://www.utstat.toronto.edu/~brunner/oldclass/appliedf12/lectures/2101f12BootstrapR.pdf
+    
+The last link was the most helpful, as it helped develop each model and give the appropriate structure. We still need to make some minor modifications so we can use it for prediction.
+
+I'm not quite sure if it will work, but it will be interesting to implement and compare to Model 3.
+
+```{r Bagging Function for Our Scenario}
+boot_miller<- function(numMod, pctSamp){
+  diff_models = NULL
+  for(mod in seq(from = 1, to = numMod, by = 1)){
+    subset_ind <- createDataPartition(enroll.train$enrollment, p = pctSamp,
+                                    list = FALSE,
+                                    times = 1)
+    small_train <- enroll.train[subset_ind,]
+    model = lm(enrollment ~ pct_good + pct_avg1 + pct_avg2 + 
+                      pct_bad + prev_alpha_grade + ct:avg_tot, data=small_train)
+    diff_models = rbind(diff_models,coef(model))
+  }
+  diff_models <- data.frame(diff_models)
+  names(diff_models) <- c("int","pct_good", "pct_avg1", "pct_avg2", 
+                      "pct_bad", "prev_alpha_grade", "cat")
+  
+  int_coe <- mean(diff_models$int)
+  pg_coe <- mean(diff_models$pct_good)
+  pa1_coe <- mean(diff_models$pct_avg1)
+  pa2_coe <- mean(diff_models$pct_avg2)
+  pb_coe <- mean(diff_models$pct_bad)
+  pag_coe <- mean(diff_models$prev_alpha_grade)
+  cat_coe <- mean(diff_models$cat)
+  
+  boot_model <- lm(enrollment ~ pct_good + pct_avg1 + pct_avg2 + 
+                    pct_bad + prev_alpha_grade + ct:avg_tot,
+                   data = enroll.train)
+  og_mod <- boot_model
+  boot_model$coefficients <- c(int_coe, pg_coe, pa1_coe, pa2_coe, pb_coe,
+                               pag_coe, cat_coe)
+  
+  pred <- predict(boot_model, newdata = enroll.train)
+  boot_model$fitted.values <- pred
+  boot_model$residuals <- enroll.train$enrollment - boot_model$fitted.values
+  
+  boot_model$r
+  
+  return (boot_model)
+}
+```
+
+Since we are using the functional form of Model 3, the coefficients and predicted values should be different from Model 3. I could not figure out how to get the other information in the summary of the lm to change, so we need to calculate RMSE, our selection criterion, by hand.
+
+```{r Show It Works}
+set.seed(1000)
+enroll_boot_1 <- boot_miller(5,.5)
+
+enroll_boot_1$coefficients
+enroll_lm_3$coefficients
+
+enroll_predict_train_b1 <- predict(enroll_boot_1, newdata = enroll.train)
+
+head(enroll_predict_train_3)
+head(enroll_predict_train_b1)
+```
+It seems as if our function is in working order. It might be interesting to tweak the parameters of our function to see which performs the best.
+
+```{r Make Some Models}
+set.seed(1001)
+rmse_train_mat = matrix(NA,11,10)
+rmse_test_mat = matrix(NA,11,10)
+
+for (i in seq(0, 10, 1)){
+  for (j in seq(1,10,1)){
+    mod = boot_miller(i*5+10,j*.1)
+    rmse_train_mat[i+1,j] = RMSE(mod$fitted.values, enroll.train$enrollment) 
+    
+    enroll_predict_test <- predict(mod, newdata = enroll.test)
+    rmse_test_mat[i+1,j] = RMSE(enroll_predict_test, enroll.test$enrollment)
+  }
+}
+```
+
+```{r Get the Results into a DF}
+rownames(rmse_train_mat) <- seq(10,115,10)
+rownames(rmse_test_mat) <- seq(10,115,10)
+
+colnames(rmse_train_mat) <- seq(.1,1,.1)
+colnames(rmse_test_mat) <- seq(.1,1,.1)
+
+rmse_train_mat <- as.data.frame(as.table(rmse_train_mat))
+rmse_test_mat <- as.data.frame(as.table(rmse_test_mat))
+
+setNames(melt(rmse_train_mat), c('models','samples','rmse'))
+
+names(rmse_train_mat) <-  c('models','samples','rmse')
+names(rmse_test_mat) <-  c('models','samples','rmse')
+```
+
+```{r Display Training Results}
+ggplot(rmse_train_mat) + geom_line(aes(samples, rmse,
+                                       group = models,
+                                       color = models)) +
+  ggtitle("Percentage of Samples per Bag vs. RMSE
+          \nby Number of Bags TRAINING") +
+  xlab("Percentage of Samples per Bag") +
+  ylab("RMSE") +
+  geom_point(aes(samples, rmse)) +
+  geom_hline(yintercept = 
+               RMSE(enroll.train$enrollment, enroll_predict_train_3),
+             linetype = "dashed",
+             color = 'red') +
+  scale_color_discrete(name = "Number of Bags",
+                       labels = seq(10, 110, 10)) +
+  theme_economist()
+
+ggplot(rmse_train_mat) + geom_line(aes(models, rmse,
+                                       group = samples,
+                                       color = samples)) +
+  ggtitle("Number of Bags vs. RMSE
+          \nby Percentage of Samples per Bag TRAINING") +
+  xlab("Number of Bags") +
+  ylab("RMSE") +
+  geom_point(aes(models, rmse)) +
+  geom_hline(yintercept = 
+               RMSE(enroll.train$enrollment, enroll_predict_train_3),
+             linetype = "dashed",
+             color = 'red') +
+  scale_color_discrete(name = "Percentage of Samples per Bag",
+                       labels = seq(.1, 1, .1)) +
+  theme_economist()
+
+```
+
+Let's interpret these resulsts quickly. Keep in mind that these are results on the training data, so it makes sense that each of our bagged models performs worse than the traditional regression model (Model 3) because this model is literally optimized for the training data. The RMSE of Model 3 is the dotted red line seen in both plots above. 
+
+It seems that the RMSE of the bagged models, when grouped by number of models, converges to the RMSE of Model 3 as the number of samples increases. This makes sense because if we are using all of the data, then the model estimates will be the same no matter how many models we have. As we reduce the percentage of samples used, there will be more variation in each model, so the RMSE of each bagged model will veer from the asymptote thta is Model 3's RMSE. It is interesting that the extreme values in number of bags do not produce the extreme values in RMSE across all values of samples per bag.
+
+A general trend in the next plot is that using more samples per bag will usually yield a lower RMSE, which agrees with the previous plot. Additionally, increasing the number of bags generally improves the RMSE of a given bagged model. This holds particularly true when the number of samples per bag is a lower percenatage. This can be thought of as a bagged model being given an opportunity to correct for using a sample which does not align with the entire data set.
+
+Now for what we are actually interested in. We knew the bagged models would perform worse than Model 3 on the training data, but what kinds of trends can we observe when comparing the models' performances on the testing data?
+
+```{r Display Testing Results}
+ggplot(rmse_test_mat) + geom_line(aes(samples, rmse,
+                                       group = models,
+                                       color = models)) +
+  ggtitle("Percentage of Samples per Bag vs. RMSE
+          \nby Number of Bags TESTING") +
+  xlab("Percentage of Samples per Bag") +
+  ylab("RMSE") +
+  geom_point(aes(samples, rmse)) +
+  geom_hline(yintercept = 
+               RMSE(enroll.test$enrollment, enroll_predict_test_3),
+             linetype = "dashed",
+             color = 'red') +
+  scale_color_discrete(name = "Number of Bags", 
+                       labels = seq(10, 110, 10)) +
+  theme_economist()
+
+ggplot(rmse_test_mat) + geom_line(aes(models, rmse,
+                                       group = samples,
+                                       color = samples)) +
+  ggtitle("Number of Bags vs. RMSE
+          \nby Percentage of Samples per Bag TESTING") +
+  xlab("Number of Bags") +
+  ylab("RMSE") +
+  geom_point(aes(models, rmse)) +
+  geom_hline(yintercept = 
+               RMSE(enroll.test$enrollment, enroll_predict_test_3),
+             linetype = "dashed",
+             color = 'red') +
+  scale_color_discrete(name = "Percentage of Samples per Bag", 
+                       labels = seq(.1, 1, .1)) +
+  theme_economist()
+```
+
+We again observe that as the percentage of samples per bag approaches 100%, the RMSEs converge to the RMSE of Model 3. It is interesting to observe that there are several models which produce lower RMSEs on the testing data. It appears that 30 bags using at most 20% of the data produces the lowest RMSE.
+
+```{r Minimum RMSE of First Experiment}
+min(rmse_test_mat$rmse)
+which.min(rmse_test_mat$rmse)
+rmse_test_mat[13,]
+```
+
+That is correct. 20 bags with a 20% sampling rate produces the lowest RMSE in this experiment. However, because bagging is based on an element of randomness, this combination of paramters will likely not yield the best result everytime.
+
+To verify this idea, let's generate a new set of bagged models and see which paramters perform the best in this set of experiments.
+
+```{r Make Some More Models}
+set.seed(9999)
+rmse_train_mat = matrix(NA,11,10)
+rmse_test_mat = matrix(NA,11,10)
+
+for (i in seq(0, 10, 1)){
+  for (j in seq(1,10,1)){
+    mod = boot_miller(i*5+10,j*.1)
+    rmse_train_mat[i+1,j] = RMSE(mod$fitted.values, enroll.train$enrollment) 
+    
+    enroll_predict_test <- predict(mod, newdata = enroll.test)
+    rmse_test_mat[i+1,j] = RMSE(enroll_predict_test, enroll.test$enrollment)
+  }
+}
+```
+  
+  
+```{r Get the New Results into a DF}
+rownames(rmse_train_mat) <- seq(10,115,10)
+rownames(rmse_test_mat) <- seq(10,115,10)
+
+colnames(rmse_train_mat) <- seq(.1,1,.1)
+colnames(rmse_test_mat) <- seq(.1,1,.1)
+
+rmse_train_mat <- as.data.frame(as.table(rmse_train_mat))
+rmse_test_mat <- as.data.frame(as.table(rmse_test_mat))
+
+setNames(melt(rmse_train_mat), c('models','samples','rmse'))
+
+names(rmse_train_mat) <-  c('models','samples','rmse')
+names(rmse_test_mat) <-  c('models','samples','rmse')
+```  
+```{r Display New Testing Results}
+ggplot(rmse_test_mat) + geom_line(aes(samples, rmse,
+                                       group = models,
+                                       color = models)) +
+  ggtitle("Percentage of Samples per Bag vs. RMSE
+          \nby Number of Bags TESTING") +
+  xlab("Percentage of Samples per Bag") +
+  ylab("RMSE") +
+  geom_point(aes(samples, rmse)) +
+  geom_hline(yintercept = 
+               RMSE(enroll.test$enrollment, enroll_predict_test_3),
+             linetype = "dashed",
+             color = 'red') +
+  scale_color_discrete(name = "Number of Bags", 
+                       labels = seq(10, 110, 10)) +
+  theme_economist()
+
+ggplot(rmse_test_mat) + geom_line(aes(models, rmse,
+                                       group = samples,
+                                       color = samples)) +
+  ggtitle("Number of Bags vs. RMSE
+          \nby Percentage of Samples per Bag TESTING") +
+  xlab("Number of Bags") +
+  ylab("RMSE") +
+  geom_point(aes(models, rmse)) +
+  geom_hline(yintercept = 
+               RMSE(enroll.test$enrollment, enroll_predict_test_3),
+             linetype = "dashed",
+             color = 'red') +
+  scale_color_discrete(name = "Percentage of Samples per Bag", 
+                       labels = seq(.1, 1, .1)) +
+  theme_economist()
+```
+
+Remember, the results are different because the sampling is stochastic. New samples in each bag will produce a new model (with a different RMSE). Now it appears that using anywhere between 20 and 70 percent of the training data to train each bag, along with anywhere between 10 and 60 models will result in an RMSE potentially better thann Model 3. 
+
+Let's see which combination of parameters will produce the best bagged model in this experiment:
+
+```{r Minimum RMSE of Second Experiment}
+min(rmse_test_mat$rmse)
+which.min(rmse_test_mat$rmse)
+rmse_test_mat[14,]
+```
+
+Now 30 bags with a 20% sampling rate minimizes RMSE. For this model, one would probably want to experiment with using anywhere between 10 and 40 bags in a model with a sampling rate between 10 and 30 percent. It is interesting that the results were similar in this new experiment. The experiments take a while to compile, but with more time, it could be interesting to run a bunch of experiments and create a 2D heat map sort-of-thing to show which set of parameters prodcues the lowest RMSE in the most experiments. It would also be interesting to see if this trend holds true for other data sets with different variables.
+
+But remember why we embarked on this journey! We wanted to resolve heteroskedasticity with bagging. Is this possible with one of our better models?
+
+```{r}
+set.seed(789)
+het_fix_mod <- boot_miller(30,.30)
+het_fix_mod_predict_test <- predict(het_fix_mod, newdata = enroll.test)
+RMSE(het_fix_mod_predict_test, enroll.test$enrollment)
+bptest(het_fix_mod)
+```
+
+No.
+
+That completes our (introductory) analysis of bagging in the context of regression. Furthmore, it completes the MIS 4470 final project. To summarize we:
+
+- Completed some EDA for grade distribution data
+    - The change in grading style had no apparent effect on how grades were distributed
+    - There were some interesting trends in differences in grade distributions across departments and academic levels
+  
+- Developed some linear regression models to predict enrollment in a given department
+    - The distribution of grades had only marginal effect on enrollment
+    - A lagged dependent variable had excellent explanatory power
+  
+- Developed a basic bootstrap aggregation function for linear regression
+    - Implementing it enhanced my understanding of how it worked and gave me good, practical experience with a new technique
+    - Based on a (admittedly small) set of experiments, a relatively large number of modelswith a relatively low sampling rate can outcompete traditional linear regression
+  
